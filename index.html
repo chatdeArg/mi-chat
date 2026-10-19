@@ -19,6 +19,7 @@ button,input{font:inherit}
 .side-head{display:flex;align-items:center;justify-content:space-between;padding:16px}
 .side-head h1{font-size:17px;font-weight:600}
 .addbtn{width:30px;height:30px;border:1px solid var(--border);background:transparent;color:var(--text);border-radius:8px;cursor:pointer;font-size:15px}
+#online{flex:none;max-height:230px;overflow-y:auto;border-bottom:1px solid var(--border)}
 #rooms{flex:1;overflow-y:auto;padding-bottom:8px}
 .sec{padding:12px 16px 4px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
 .room{display:flex;align-items:center;gap:10px;padding:10px 16px;cursor:pointer;color:var(--muted);border-left:3px solid transparent}
@@ -71,6 +72,7 @@ header h2{font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text
 
 <nav id="sidebar">
   <div class="side-head"><h1>Salas</h1><button class="addbtn" id="dmBtn" title="Nuevo privado">＋</button></div>
+  <div id="online"></div>
   <div id="rooms"></div>
   <div class="userbox" id="userbox"></div>
 </nav>
@@ -94,7 +96,7 @@ header h2{font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text
 
 <script type="module">
 // ═══ CONFIGURACIÓN ═══
-const SUPABASE_URL = "https://zqjeuqtygxfxfdngvdwhz.supabase.co";
+const SUPABASE_URL = "https://zqjeuqtygxfxdngvdwhz.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_dS5Hp3mZnEUSNjJv32ufeQ_XLNF0TXD";
 const PHOTO_BUCKET = "fotos";
 // ═════════════════════
@@ -188,13 +190,34 @@ function renderHeader(){
 }
 renderRooms(); renderHeader();
 
+const chatCh = sb.channel("chat-rooms");
+chatCh.on("broadcast", {event:"msg"}, ({payload}) => addMsg(payload));
+chatCh.on("presence", {event:"sync"}, refreshOnline);
+chatCh.on("presence", {event:"join"}, refreshOnline);
+chatCh.on("presence", {event:"leave"}, refreshOnline);
+
+function refreshOnline(){
+  const st = chatCh.presenceState();
+  const users = new Set();
+  for (const k in st) (st[k]||[]).forEach(p => { if (p.user) users.add(p.user); });
+  const arr = [...users].sort((a,b)=>a.toLowerCase().localeCompare(b.toLowerCase()));
+  $("online").innerHTML = `<div class="sec">Conectados (${arr.length})</div>` + arr.map(u =>
+    `<div class="room" data-u="${esc(u)}"><span class="dot" style="background:#2ecc71"></span><span class="nm">${esc(u)}${u===user?" (vos)":""}</span></div>`
+  ).join("");
+  document.querySelectorAll("#online .room").forEach(el => el.onclick = () => {
+    const u = el.dataset.u;
+    $("sidebar").classList.remove("open");
+    if (u !== user) openDM(u);
+  });
+}
+
+ensureChannel("user-" + user.toLowerCase());
+
 function ensureChannel(id){
   if (subscribed.has(id)) return;
   subscribed.add(id);
   sb.channel(id).on("broadcast", {event:"msg"}, ({payload}) => addMsg(payload)).subscribe();
 }
-ensureChannel("chat-rooms");
-ensureChannel("user-" + user.toLowerCase());
 
 sb.channel("user-" + user.toLowerCase())
   .on("broadcast", {event:"dm-invite"}, ({payload}) => {
@@ -206,9 +229,10 @@ sb.channel("user-" + user.toLowerCase())
   })
   .subscribe();
 
-sb.channel("chat-rooms").subscribe(s => {
+chatCh.subscribe(async s => {
   $("conn").textContent = s === "SUBSCRIBED" ? "● en línea" : "conectando…";
   $("conn").style.color = s === "SUBSCRIBED" ? "#2ecc71" : "var(--muted)";
+  if (s === "SUBSCRIBED") await chatCh.track({user});
 });
 
 function openDM(other){
@@ -328,4 +352,5 @@ function compress(file){
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
 </script>
 </body>
-</html>
+  </html>
+  
