@@ -224,7 +224,7 @@ function refreshOnline(){
     if (u !== user) openDM(u);
   });
 }
-ensureChannel("user-" + user.toLowerCase());
+  ensureChannel("user-" + user.toLowerCase());
 
 function ensureChannel(id){
   if (subscribed.has(id)) return;
@@ -417,15 +417,13 @@ $("fileInp").onchange = async e => {
   try {
     addNote("Enviando foto…");
     const blob = await compress(file);
-        const path = active.replace(/[^a-z0-9]/gi, "_") + "/" + Date.now() + ".jpg";
-    
+    const path = active.replace(/[^a-z0-9]/gi, "_") + "/" + Date.now() + ".jpg";
     const { error } = await sb.storage.from(PHOTO_BUCKET).upload(path, blob, {contentType:"image/jpeg"});
     if (error) throw error;
     const { data } = sb.storage.from(PHOTO_BUCKET).getPublicUrl(path);
     sendMsg({img: data.publicUrl, text:"📷 Foto"});
   } catch(err) {
-        addNote("⚠️ Error de foto: " + (err && err.message ? err.message : err));
-  
+    addNote("⚠️ Error de foto: " + (err && err.message ? err.message : err));
   }
 };
 function compress(file){
@@ -448,4 +446,3 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
 </script>
 </body>
 </html>
-
