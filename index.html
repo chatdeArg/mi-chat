@@ -61,10 +61,13 @@ header h2{font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text
 #picBtn{display:none;width:44px;height:44px;border:1px solid var(--border);border-radius:10px;background:var(--panel2);color:var(--text);cursor:pointer;font-size:18px;flex:none}
 #picBtn.show{display:block}
 #conn{font-size:11px;padding:4px 16px;color:var(--muted);background:var(--panel);text-align:center}
+#pvnote{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:50;background:var(--accent);color:#fff;padding:10px 16px;border-radius:24px;font-size:14px;font-weight:500;cursor:pointer;display:none;box-shadow:0 4px 16px rgba(0,0,0,.4);max-width:92vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#closeBtn{display:none}
 @media(max-width:640px){
   #sidebar{position:fixed;inset:0 auto 0 0;z-index:20;transform:translateX(-100%);transition:transform .25s}
   #sidebar.open{transform:none;box-shadow:0 0 40px rgba(0,0,0,.5)}
   #menuBtn{display:block}
+  #closeBtn{display:block}
   .bdy{max-width:85%}
   .bbl img{max-width:190px}
   #ytplayer{width:190px}
@@ -74,11 +77,13 @@ header h2{font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text
 <body>
 
 <nav id="sidebar">
-  <div class="side-head"><h1>Salas</h1><button class="addbtn" id="dmBtn" title="Nuevo privado">＋</button></div>
+  <div class="side-head"><h1>Salas</h1><span style="display:flex;gap:6px"><button class="addbtn" id="dmBtn" title="Nuevo privado">＋</button><button class="addbtn" id="closeBtn" title="Cerrar menú">✕</button></span></div>
   <div id="online"></div>
   <div id="rooms"></div>
   <div class="userbox" id="userbox"></div>
+  <div style="padding:10px 16px;border-top:1px solid var(--border)"><button id="exitBtn" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--muted);cursor:pointer;font-size:13px">🚪 Salir del chat</button></div>
 </nav>
+<div id="backdrop" style="display:none;position:fixed;inset:0;z-index:15;background:rgba(0,0,0,.5)"></div>
 
 <div id="main">
   <header>
@@ -95,6 +100,7 @@ header h2{font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text
     <button id="send" title="Enviar">➤</button>
   </div>
 </div>
+<div id="pvnote"></div>
 <div id="kick" style="display:none;position:fixed;inset:0;z-index:99;background:#0f0f14;color:#f2f2f5;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px;gap:14px">
   <div style="font-size:56px">🚫</div>
   <h2 style="font-size:22px">Fuiste expulsado del chat</h2>
@@ -187,7 +193,7 @@ function renderRooms(){
   $("rooms").innerHTML = html;
   document.querySelectorAll(".room").forEach(el => el.onclick = () => {
     active = el.dataset.id; seen.clear(); $("msgs").innerHTML = "";
-    renderHeader(); renderRooms(); $("sidebar").classList.remove("open");
+    renderHeader(); renderRooms(); openMenu(false);
     ensureChannel(active);
     addNote("Estás en: " + roomLabel(active) + (isDM(active) ? " — solo ustedes dos lo ven" : ""));
   });
@@ -214,11 +220,11 @@ function refreshOnline(){
   ).join("");
   document.querySelectorAll("#online .room").forEach(el => el.onclick = () => {
     const u = el.dataset.u;
-    $("sidebar").classList.remove("open");
+    openMenu(false);
     if (u !== user) openDM(u);
   });
 }
-  ensureChannel("user-" + user.toLowerCase());
+ensureChannel("user-" + user.toLowerCase());
 
 function ensureChannel(id){
   if (subscribed.has(id)) return;
@@ -233,6 +239,7 @@ sb.channel("user-" + user.toLowerCase())
       renderRooms(); addNote("💬 " + payload.from + " te abrió un privado");
     }
     ensureChannel(payload.room);
+    showPVNotify(payload.from, payload.room);
   })
   .subscribe();
 
@@ -278,7 +285,10 @@ function addMsg(m){
   if (seen.has(key)) return; seen.add(key);
   if (banned.has(m.user.toLowerCase())) return;
   if (m.text && checkMsg(m.text)) { reportBan(m.user); return; }
-  if (m.room !== active) return;
+  if (m.room !== active) {
+    if (isDM(m.room)) showPVNotify(m.user, m.room);
+    return;
+  }
   const mine = m.user === user;
   const yt = m.yt || ytId(m.text);
   const body = m.img
@@ -362,7 +372,32 @@ function send(){
 }
 $("send").onclick = send;
 $("inp").addEventListener("keydown", e => { if (e.key==="Enter") send(); });
-$("menuBtn").onclick = () => $("sidebar").classList.toggle("open");
+
+function openMenu(o){ $("sidebar").classList.toggle("open", o); $("backdrop").style.display = o ? "block" : "none"; }
+$("menuBtn").onclick = () => openMenu(!$("sidebar").classList.contains("open"));
+$("closeBtn").onclick = () => openMenu(false);
+$("backdrop").onclick = () => openMenu(false);
+let pvTimer = null;
+function showPVNotify(from, roomId){
+  if (roomId === active) return;
+  const el = $("pvnote");
+  el.textContent = "🔒 Mensaje de " + from + " — tocá para abrir";
+  el.dataset.user = from;
+  el.style.display = "block";
+  clearTimeout(pvTimer);
+  pvTimer = setTimeout(() => { el.style.display = "none"; }, 6000);
+}
+$("pvnote").onclick = () => {
+  const u = $("pvnote").dataset.user;
+  $("pvnote").style.display = "none";
+  openDM(u);
+};
+$("exitBtn").onclick = () => {
+  if (!confirm("¿Salir del chat? Vas a poder volver a entrar con otro nombre.")) return;
+  localStorage.removeItem("chat_user");
+  localStorage.removeItem("chat_dms");
+  location.reload();
+};
 
 // ─── Música de YouTube ───
 $("ytBtn").onclick = () => {
@@ -411,3 +446,4 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
 </script>
 </body>
 </html>
+
