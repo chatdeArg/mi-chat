@@ -4,7 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#0f0f14">
-<title>Chat Salas</title>
+<meta name="description" content="Chat de Argentina gratis: salas por provincias, comunidades, mayores de 30, 40 y 50, encuentros, privados con fotos y música de YouTube. Solo mayores de 18 años.">
+<meta name="keywords" content="chat argentina, chat gratis argentina, salas de chat, chat por provincias, chat argentino, chat online, chat amigos, chat encuentros">
+<meta name="robots" content="index, follow">
+<title>Chat de Argentina - Salas gratis por provincias y comunidades</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
 <style>
@@ -91,6 +94,11 @@ header h2{font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text
     <input id="inp" placeholder="Escribe un mensaje…" autocomplete="off" enterkeyhint="send">
     <button id="send" title="Enviar">➤</button>
   </div>
+</div>
+<div id="kick" style="display:none;position:fixed;inset:0;z-index:99;background:#0f0f14;color:#f2f2f5;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px;gap:14px">
+  <div style="font-size:56px">🚫</div>
+  <h2 style="font-size:22px">Fuiste expulsado del chat</h2>
+  <p style="color:#9a9aad;font-size:14px;max-width:320px;line-height:21px">El moderador automático detectó contenido relacionado con menores de edad. Esta sala es solo para mayores de 18 años.</p>
 </div>
 <input type="file" id="fileInp" accept="image/*" style="display:none">
 
@@ -210,8 +218,7 @@ function refreshOnline(){
     if (u !== user) openDM(u);
   });
 }
-
-ensureChannel("user-" + user.toLowerCase());
+  ensureChannel("user-" + user.toLowerCase());
 
 function ensureChannel(id){
   if (subscribed.has(id)) return;
@@ -232,7 +239,7 @@ sb.channel("user-" + user.toLowerCase())
 chatCh.subscribe(async s => {
   $("conn").textContent = s === "SUBSCRIBED" ? "● en línea" : "conectando…";
   $("conn").style.color = s === "SUBSCRIBED" ? "#2ecc71" : "var(--muted)";
-  if (s === "SUBSCRIBED") await chatCh.track({user});
+  if (s === "SUBSCRIBED") { await chatCh.track({user}); addNote("🤖 Moderador activo: este chat es solo para mayores de 18 años."); }
 });
 
 function openDM(other){
@@ -269,6 +276,8 @@ function bindPlayers(){
 function addMsg(m){
   const key = m.room + m.ts + m.user;
   if (seen.has(key)) return; seen.add(key);
+  if (banned.has(m.user.toLowerCase())) return;
+  if (m.text && checkMsg(m.text)) { reportBan(m.user); return; }
   if (m.room !== active) return;
   const mine = m.user === user;
   const yt = m.yt || ytId(m.text);
@@ -297,9 +306,57 @@ function sendMsg(payload){
     sb.channel("user-" + other).send({type:"broadcast", event:"dm-invite", payload:{from:user, room:active}});
   }
 }
+// ─── Filtro de contenido: solo mayores de 18 ───
+const LEET = {"0":"o","1":"i","3":"e","4":"a","5":"s","7":"t","8":"b","@":"a","$":"s","!":"i","+":"t"};
+function flatten(str){
+  let t = String(str).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+  t = t.replace(/[0134578@$!+]/g, c => LEET[c] || c);
+  return t.replace(/[^a-z]/g,"");
+}
+const BLOCK_WORDS = ["menor","menores","quinceanera","quinceaneras","preadolescente","preadolescentes","adolescente","adolescentes","preteen","teen","teenager","ninita","ninitas","puberto","puberta","underage","under18","sub18","infante","infantes","pedofil","pedofilia"];
+const AGE_WORDS = ["uno","dos","tres","cuatro","cinco","seis","siete","ocho","nueve","diez","once","doce","trece","catorce","quince","dieciseis","diecisiete","anitos","anito"];
+const AGE_PHRASES = ["menorde","menoresde","menosde"];
+function checkMsg(text, checkNumbers = true){
+  const flat = flatten(text);
+  if (BLOCK_WORDS.some(w => flat.includes(w))) return "palabra";
+  if (AGE_PHRASES.some(w => flat.includes(w))) return "frase";
+  if (!checkNumbers) return false;
+  const ageCtx = flat.includes("ano") || /tengo|soy|cumplo|edad|años/.test(flat);
+  if (!ageCtx) return false;
+  if (AGE_WORDS.some(w => flat.includes(w))) return "edad";
+  if ((String(text).match(/\d{1,2}/g) || []).some(v => +v < 18)) return "edad";
+  return false;
+}
+const BLOCK_NOTE = "🚫 Mensaje bloqueado: este chat es solo para mayores de 18 años.";
+
+// ─── Moderador automático (bot) ───
+const banned = new Set();
+function kickOut(){ $("kick").style.display = "flex"; }
+async function reportBan(nombre){
+  try { await sb.from("bans").upsert({nombre: nombre.toLowerCase()}); } catch(e){}
+}
+async function loadBans(){
+  try {
+    const { data } = await sb.from("bans").select("nombre");
+    (data || []).forEach(r => banned.add(r.nombre));
+    if (banned.has(user.toLowerCase())) kickOut();
+  } catch(e){}
+}
+sb.channel("moderacion")
+  .on("postgres_changes", {event:"INSERT", schema:"public", table:"bans"}, ({payload}) => {
+    const n = payload.new.nombre;
+    banned.add(n);
+    if (n === user.toLowerCase()) kickOut();
+    else addNote("🤖 Moderador: " + n + " fue expulsado por contenido prohibido.");
+  })
+  .subscribe();
+loadBans();
+
 function send(){
   const text = $("inp").value.trim();
   if (!text) return;
+  const bad = checkMsg(text);
+  if (bad) { reportBan(user); kickOut(); return; }
   $("inp").value = "";
   sendMsg({text});
 }
@@ -313,6 +370,7 @@ $("ytBtn").onclick = () => {
   if (!url) return;
   const id = ytId(url);
   if (!id) { addNote("⚠️ Ese link no es de YouTube. Probá con uno como https://youtu.be/xxxx"); return; }
+  if (checkMsg(url, false)) { addNote(BLOCK_NOTE); return; }
   sendMsg({yt:id, text:url.trim().slice(0,80)});
 };
 
@@ -352,5 +410,4 @@ function compress(file){
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
 </script>
 </body>
-  </html>
-  
+</html>
