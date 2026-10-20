@@ -423,7 +423,8 @@ $("fileInp").onchange = async e => {
     const { data } = sb.storage.from(PHOTO_BUCKET).getPublicUrl(path);
     sendMsg({img: data.publicUrl, text:"📷 Foto"});
   } catch(err) {
-    addNote("⚠️ No se pudo enviar la foto. Verificá que el bucket '" + PHOTO_BUCKET + "' exista y sea público.");
+        addNote("⚠️ Error de foto: " + (err && err.message ? err.message : err));
+  
   }
 };
 function compress(file){
