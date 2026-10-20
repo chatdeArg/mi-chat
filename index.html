@@ -417,7 +417,8 @@ $("fileInp").onchange = async e => {
   try {
     addNote("Enviando foto…");
     const blob = await compress(file);
-    const path = active + "/" + Date.now() + ".jpg";
+        const path = active.replace(/[^a-z0-9]/gi, "_") + "/" + Date.now() + ".jpg";
+    
     const { error } = await sb.storage.from(PHOTO_BUCKET).upload(path, blob, {contentType:"image/jpeg"});
     if (error) throw error;
     const { data } = sb.storage.from(PHOTO_BUCKET).getPublicUrl(path);
