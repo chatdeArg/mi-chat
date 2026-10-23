@@ -53,6 +53,7 @@ header h2{font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text
 #inp:focus{border-color:var(--accent)}
 #send{width:44px;height:44px;border:none;border-radius:10px;background:var(--accent);color:#fff;cursor:pointer;font-size:18px;flex:none}
 #send:active{opacity:.85}
+#emojiBtn{width:44px;height:44px;border:1px solid var(--border);border-radius:10px;background:var(--panel2);color:var(--text);cursor:pointer;font-size:18px;flex:none}
 #ytBtn{width:44px;height:44px;border:1px solid var(--border);border-radius:10px;background:var(--panel2);color:var(--text);cursor:pointer;font-size:18px;flex:none}
 #ytplayer{position:relative;width:230px;max-width:100%;border-radius:10px;overflow:hidden;cursor:pointer}
 #ytplayer img{display:block;width:100%}
@@ -63,6 +64,7 @@ header h2{font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text
 #conn{font-size:11px;padding:4px 16px;color:var(--muted);background:var(--panel);text-align:center}
 #pvnote{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:50;background:var(--accent);color:#fff;padding:10px 16px;border-radius:24px;font-size:14px;font-weight:500;cursor:pointer;display:none;box-shadow:0 4px 16px rgba(0,0,0,.4);max-width:92vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #closeBtn{display:none}
+.ytitem:hover{background:var(--panel)}
 @media(max-width:640px){
   #sidebar{position:fixed;inset:0 auto 0 0;z-index:20;transform:translateX(-100%);transition:transform .25s}
   #sidebar.open{transform:none;box-shadow:0 0 40px rgba(0,0,0,.5)}
@@ -94,6 +96,7 @@ header h2{font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text
   <div id="conn">conectando…</div>
   <div id="msgs"></div>
   <div id="composer">
+    <button id="emojiBtn" title="Emojis">😀</button>
     <button id="ytBtn" title="Subir música de YouTube">🎵</button>
     <button id="picBtn" title="Enviar foto">📷</button>
     <input id="inp" placeholder="Escribe un mensaje… (probá !yt tema)" autocomplete="off" enterkeyhint="send">
@@ -243,7 +246,7 @@ sb.channel("user-" + user.toLowerCase())
     showPVNotify(payload.from, payload.room);
   })
   .subscribe();
-  chatCh.subscribe(async s => {
+chatCh.subscribe(async s => {
   $("conn").textContent = s === "SUBSCRIBED" ? "● en línea" : "conectando…";
   $("conn").style.color = s === "SUBSCRIBED" ? "#2ecc71" : "var(--muted)";
   if (s === "SUBSCRIBED") { await chatCh.track({user}); addNote("🤖 Moderador activo: este chat es solo para mayores de 18 años."); }
@@ -276,7 +279,11 @@ function bindPlayers(){
   document.querySelectorAll(".ytp").forEach(el => {
     if (el.dataset.done) return; el.dataset.done = "1";
     el.onclick = () => {
-      el.innerHTML = `<div id="ytplayer"><iframe src="https://www.youtube-nocookie.com/embed/${el.dataset.id}?autoplay=1" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div>`;
+      el.innerHTML = `<div style="position:relative"><button class="ytclose" style="position:absolute;top:6px;right:6px;z-index:2;width:26px;height:26px;border:none;border-radius:50%;background:rgba(0,0,0,.7);color:#fff;cursor:pointer;font-size:13px;line-height:1">✕</button><div id="ytplayer"><iframe src="https://www.youtube-nocookie.com/embed/${el.dataset.id}?autoplay=1" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div></div>`;
+      el.querySelector(".ytclose").onclick = (ev) => {
+        ev.stopPropagation();
+        el.innerHTML = `<div id="ytplayer"><img src="https://i.ytimg.com/vi/${el.dataset.id}/hqdefault.jpg" loading="lazy" alt="YouTube"><div class="play">▶</div></div>`;
+      };
     };
   });
 }
@@ -370,19 +377,55 @@ async function searchYT(q){
       const r = await fetch(base + "/search?q=" + encodeURIComponent(q) + "&filter=videos");
       if (!r.ok) continue;
       const data = await r.json();
-      const item = (data.items || []).find(v => v.url && v.url.includes("watch?v="));
-      if (item) {
-        const id = ytId("https://www.youtube.com" + item.url);
-        if (id) {
-          addNote("🎵 Encontrado: " + (item.title || q));
-          sendMsg({yt:id, text:(item.title || q).slice(0,80)});
-          return;
-        }
-      }
+      const vids = (data.items || []).filter(v => v.url && v.url.includes("watch?v=")).slice(0, 6);
+      if (vids.length) { showYTPicker(vids, q); return; }
     } catch(e){}
   }
   addNote("⚠️ No se pudo buscar ahora. Probá de nuevo o pegá el link directo con 🎵.");
 }
+
+function showYTPicker(vids, q){
+  const old = $("ytpick"); if (old) old.remove();
+  const box = document.createElement("div");
+  box.id = "ytpick";
+  box.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);bottom:76px;z-index:60;width:min(420px,94vw);max-height:50dvh;overflow-y:auto;background:var(--panel2);border:1px solid var(--border);border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:6px;box-shadow:0 8px 30px rgba(0,0,0,.5)";
+  box.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 4px 8px"><b style="font-size:13px">Resultados para «' + esc(q) + '»</b><button id="ytpickX" style="border:none;background:transparent;color:var(--muted);font-size:16px;cursor:pointer">✕</button></div>'
+    + vids.map((v,i) => {
+        const id = ytId("https://www.youtube.com" + v.url) || "";
+        return '<div class="ytitem" data-i="' + i + '" style="display:flex;gap:8px;align-items:center;padding:6px;border-radius:8px;cursor:pointer">'
+          + '<img src="https://i.ytimg.com/vi/' + id + '/default.jpg" style="width:64px;border-radius:6px;flex:none">'
+          + '<span style="font-size:13px;line-height:17px">' + esc(v.title || "Sin título")
+          + '<br><small style="color:var(--muted)">' + esc(v.uploaderName || "") + '</small></span></div>';
+      }).join("");
+  document.body.appendChild(box);
+  $("ytpickX").onclick = () => box.remove();
+  box.querySelectorAll(".ytitem").forEach(el => el.onclick = () => {
+    const v = vids[+el.dataset.i];
+    const id = ytId("https://www.youtube.com" + v.url);
+    box.remove();
+    if (id) sendMsg({yt:id, text:(v.title || "").slice(0,80)});
+  });
+}
+
+// ─── Panel de emojis ───
+const EMOJIS = ["😀","😂","🤣","😊","😍","😘","😜","🤔","😎","😢","😡","🥺","😴","🤗","🙌","👍","👎","👏","🙏","💪","👋","🤝","❤️","💔","💕","🔥","✨","🎉","🎂","🌹","🍀","🌙","⭐","☀️","🍕","🍺","☕","⚽","🎵","🎮","📷","✈️","🏠","💯","🤖","🚫","🇦🇷"];
+$("emojiBtn").onclick = () => {
+  const oldBox = $("emojipick");
+  if (oldBox) { oldBox.remove(); return; }
+  const box = document.createElement("div");
+  box.id = "emojipick";
+  box.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);bottom:76px;z-index:60;width:min(360px,92vw);max-height:45dvh;overflow-y:auto;background:var(--panel2);border:1px solid var(--border);border-radius:14px;padding:10px;box-shadow:0 8px 30px rgba(0,0,0,.5)";
+  box.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 4px 8px"><b style="font-size:13px">Emojis</b><button id="emojiX" style="border:none;background:transparent;color:var(--muted);font-size:16px;cursor:pointer">✕</button></div>'
+    + '<div style="display:grid;grid-template-columns:repeat(8,1fr);gap:2px">'
+    + EMOJIS.map(e => '<button class="emj" style="border:none;background:transparent;font-size:22px;padding:6px 0;cursor:pointer">' + e + '</button>').join("")
+    + '</div>';
+  document.body.appendChild(box);
+  $("emojiX").onclick = () => box.remove();
+  box.querySelectorAll(".emj").forEach(el => el.onclick = () => {
+    $("inp").value += el.textContent;
+    $("inp").focus();
+  });
+};
 
 function send(){
   const text = $("inp").value.trim();
