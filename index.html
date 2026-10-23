@@ -96,7 +96,7 @@ header h2{font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text
   <div id="composer">
     <button id="ytBtn" title="Subir música de YouTube">🎵</button>
     <button id="picBtn" title="Enviar foto">📷</button>
-    <input id="inp" placeholder="Escribe un mensaje…" autocomplete="off" enterkeyhint="send">
+    <input id="inp" placeholder="Escribe un mensaje… (probá !yt tema)" autocomplete="off" enterkeyhint="send">
     <button id="send" title="Enviar">➤</button>
   </div>
 </div>
@@ -224,7 +224,8 @@ function refreshOnline(){
     if (u !== user) openDM(u);
   });
 }
-  ensureChannel("user-" + user.toLowerCase());
+
+ensureChannel("user-" + user.toLowerCase());
 
 function ensureChannel(id){
   if (subscribed.has(id)) return;
@@ -242,8 +243,7 @@ sb.channel("user-" + user.toLowerCase())
     showPVNotify(payload.from, payload.room);
   })
   .subscribe();
-
-chatCh.subscribe(async s => {
+  chatCh.subscribe(async s => {
   $("conn").textContent = s === "SUBSCRIBED" ? "● en línea" : "conectando…";
   $("conn").style.color = s === "SUBSCRIBED" ? "#2ecc71" : "var(--muted)";
   if (s === "SUBSCRIBED") { await chatCh.track({user}); addNote("🤖 Moderador activo: este chat es solo para mayores de 18 años."); }
@@ -362,9 +362,33 @@ sb.channel("moderacion")
   .subscribe();
 loadBans();
 
+async function searchYT(q){
+  addNote("🔎 Buscando «" + q + "» en YouTube…");
+  const insts = ["https://pipedapi.kavin.rocks", "https://pipedapi.adminforge.de", "https://api.piped.private.coffee"];
+  for (const base of insts) {
+    try {
+      const r = await fetch(base + "/search?q=" + encodeURIComponent(q) + "&filter=videos");
+      if (!r.ok) continue;
+      const data = await r.json();
+      const item = (data.items || []).find(v => v.url && v.url.includes("watch?v="));
+      if (item) {
+        const id = ytId("https://www.youtube.com" + item.url);
+        if (id) {
+          addNote("🎵 Encontrado: " + (item.title || q));
+          sendMsg({yt:id, text:(item.title || q).slice(0,80)});
+          return;
+        }
+      }
+    } catch(e){}
+  }
+  addNote("⚠️ No se pudo buscar ahora. Probá de nuevo o pegá el link directo con 🎵.");
+}
+
 function send(){
   const text = $("inp").value.trim();
   if (!text) return;
+  const cmd = text.match(/^[!\/]yt\s+(.+)$/i);
+  if (cmd) { $("inp").value = ""; searchYT(cmd[1].trim()); return; }
   const bad = checkMsg(text);
   if (bad) { reportBan(user); kickOut(); return; }
   $("inp").value = "";
@@ -393,10 +417,11 @@ $("pvnote").onclick = () => {
   openDM(u);
 };
 $("exitBtn").onclick = () => {
-  if (!confirm("¿Salir del chat? Vas a poder volver a entrar con otro nombre.")) return;
+  if (!confirm("¿Salir del chat? Se cerrará tu sesión y desaparecerás de Conectados.")) return;
   localStorage.removeItem("chat_user");
   localStorage.removeItem("chat_dms");
-  location.reload();
+  try { sb.removeAllChannels(); } catch(e){}
+  document.body.innerHTML = '<div style="height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;font-family:sans-serif;background:#0f0f14;color:#f2f2f5;text-align:center;padding:24px"><div style="font-size:52px">👋</div><h2 style="font-size:22px">Saliste del chat</h2><p style="color:#9a9aad;font-size:14px;max-width:300px;line-height:20px">Tu sesión se cerró y ya no estás conectado.</p><button onclick="location.reload()" style="padding:12px 24px;border:none;border-radius:10px;background:#6c5ce7;color:#fff;font-size:15px;cursor:pointer">Entrar de nuevo</button></div>';
 };
 
 // ─── Música de YouTube ───
